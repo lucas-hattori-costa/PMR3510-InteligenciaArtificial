@@ -1,0 +1,495 @@
+<div class="notebook">
+
+<div class="nb-cell markdown" name="md1">
+# Torre de Hanoi - A*
+
+### PMR3510 - Inteligência Artificial
+
+### Grupo: 
+- Bruno Scaglione (10335812)
+- Lucas Hattori Costa (10335847)
+- Lucas Hideki Okamura (9274315)
+</div>
+
+<div class="nb-cell html" name="htm1">
+```
+<script>
+  (function() {
+    var nb = notebook;
+    require(["https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js"+
+             "?config=TeX-MML-AM_CHTML"], function() {
+      nb.markdown_post_renderer(function() {
+        MathJax.Hub.Queue(["Typeset",MathJax.Hub,this[0]]);
+      });
+    });
+  })();
+</script>
+```
+</div>
+
+<div class="nb-cell markdown" name="md4">
+### Pseudocódigo
+</div>
+
+<div class="nb-cell markdown" name="md3">
+```
+1. Recebe um estado inicial qualquer com 5 discos.
+2. Inicializa a fronteira de nós a serem explorados com o nó inicial.
+3. Começa a busca:
+  4. Para cada nó na fronteira:
+  	4.1 Se objetivo for atingido, termina a busca e vai para 9.
+	4.2 Computa o valor f(n) para cada nó, onde f(n) = g(n) + h(n)
+    	4.3 Atribui como o melhor nó aquele com o menor valor de f(n)
+  5. Atribui como ações possíveis as ações que:
+    - respeitam as regras do sistema;
+    - voltam para o estado anterior;
+    - não desmontam discos já montados corretamente.
+  6. Para cada ação possível, gera um nó-filho.
+  7. Atualiza a fronteira de nós a serem explorados adicionando os nós-filhos gerados e excluindo o nó expandido.
+  8. Retorna a 3
+9. Retorna custo do caminho ótimo, lista de ações e número de nós explorados.
+```
+</div>
+
+<div class="nb-cell markdown" name="md5">
+### Garantia de uma solução ótima 
+ 
+#### Definicões  
+ 
+Define-se o poste \(A\) como o poste que contém o maior disco que ainda não está montado corretamente, o poste \(B\) como o poste auxiliar e o poste \(C\) como o poste de destino em que os discos são montados.
+ 
+Define-se:
+ 
+- \(H = Heuristica\)
+- \(a = numero\;de\;discos\;no\;poste\;A\)
+- \(b = numero\;de\;discos\;no\;poste\;B\)
+- \(c = numero\;de\;discos\;no\;poste\;C\)
+- \(c_{not} = numero\;de\;discos\;no\;poste\;C\;que\;nao\;estao\;montados\;corretamente\)
+</div>
+
+<div class="nb-cell markdown" name="md10">
+Define-se:
+ 
+- conjunto adjacente (ca) = conjunto de discos que estão no mesmo poste, em que todos os discos desse conjunto estão em contato com pelo menos outro disco desse conjunto 
+- conjunto sequencial (cs) = conjunto adjacente em que: \(ca_{maior}\) - \(ca_{menor}\) = len(ca) - 1, onde:
+ 
+- \(ca_{maior}\) = maior disco do conjunto adjacente em questão
+- \(ca_{menor}\) = menor disco do conjunto adjacente em questão
+- len(ca) = numero de elementos do conjunto adjacente em questão
+
+Define-se \(Hanoi(x)\) como o número de passos necessário para transportar um conjunto de discos de um poste para outro, assumindo que a base do conjunto de discos é menor que o topo do poste de destino. Este valor é \(2^x - 1\).
+ 
+#### Heurística
+ 
+Temos que \(H = Hanoi(a) + Hanoi(c_{not}) + Hanoi(b + c_{not})\), onde:
+ 
+#### Admissibilidade da Heurística
+ 
+Os discos podem estar montados em \(A\), \(B\) e \(C\) de diversas formas. A melhor configuração, ou seja, a com menor custo, é a que para cada poste: o conjunto de discos do poste caracteriza um conjunto sequencial.  
+ 
+Precisamos mover \(a\) para \(C\), mas primeiro é necessário retirar tirar \(c_{not}\) de \(C\), e para isso, o melhor caso (o caso com menor número de ações) é quando conseguimos o topo de \(B\) é maior que a base de \(c_{not}\) e conseguimos mover \(c_{not}\) para \(B\) diretamente (1). O custo da etapa (1) é \(Hanoi(c_{not})\). Em seguida, o poste \(C\) está livre e movemos \(a\) com custo \(Hanoi(a)\). Por último temos, no poste \(B\), temos \(c_{not}\) em cima de \(b\) e precisamos mover todos esses discos para \(C\), assim o custo é \(Hanoi(b + c_{not})\).
+ 
+Como a solução foi desenvolvida para o melhor caso, ou seja, para a situação em que o custo de transporte de discos é a menor, a heurística é admissível pois nunca superestima o custo.
+ 
+#### Justificativa
+ 
+Quando a heurística é admissível e é feita uma busca em árvore, a solução encontrada pelo algoritmo \(A*\) é a ótima.
+</div>
+
+<div class="nb-cell program" name="p1">
+%%% Definindo predicados basicos
+
+% - node_ref: guarda numero do node, o estado, o custo e a acao anterior para chegar a este node
+% - father: guarda o node pai e o respectivo node filho
+% - min_cost: guarda o custo minimo quando sao avaliados nodes nas fronteiras
+% - best_node: guarda o numero do node com menor custo na fronteira
+% - num_nodes: guarda o numero de nodes explorados
+% - frontier: guarda lista com numero dos nodes na fronteira
+% - action_list: guarda as acoes tomadas para chegar em cada node
+% - counter: guarda um valor auxiliar utilizado em outros predicados
+
+
+node_ref(node_num, state, cost, previous_action). % e.g node_ref(0,[[1,2,3,4,5,6],[6],[6]],0,'A2B')
+father(child_node_num, father_node_num).
+min_cost(inf).
+best_node(0).
+num_nodes(0).
+frontier([0]).
+action_list([]).
+counter(0).
+
+:- dynamic(node_ref/4).
+:- dynamic(father/2).
+:- dynamic(frontier/1).
+:- dynamic(min_cost/1).
+:- dynamic(best_node/1).
+:- dynamic(num_nodes/1).
+:- dynamic(counter/1).
+:- dynamic(action_list/1).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Custos Hanoi.
+% Calculados manualmente a partir da equacao H(n) = 2^n - 1
+
+hanoi(5,31).
+hanoi(4,15).
+hanoi(3,7).
+hanoi(2,3).
+hanoi(1,1).
+hanoi(0,0).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Predicados auxiliares
+
+% is_empty: True se a LIST for vazia
+% less_than: Atualiza o predicado counter com o numero de elementos de LIST que sao menores que VALUE
+% update_counter: Atualiza o predicado num_nodes com o valor NUM_NODES passado
+
+is_empty(LIST):- not(member(_,LIST)).
+
+less_than([],_).
+
+less_than(LIST, VALUE) :-
+    
+    [H|T] = LIST,
+    (
+        H &lt; VALUE -&gt; 
+            (
+                counter(N),
+                retractall(counter(_)),
+                AUX is N+1,
+                assertz(counter(AUX))
+            );true
+    ),
+    less_than(T,VALUE).
+
+update_counter(NUM_NODES) :-
+    % Atualiza o predicado num_nodes
+    retractall(num_nodes(_)),
+    AUX is NUM_NODES+1,
+    assertz(num_nodes(AUX)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Definindo as acoes
+
+move_A2B(PREV_STATE, NEXT_STATE) :-
+    [[HA|TA],[HB|TB],[HC|TC]|_] = PREV_STATE,
+    NEXT_STATE = [TA,[HA|[HB|TB]],[HC|TC]].
+
+move_B2A(PREV_STATE, NEXT_STATE) :-
+    [[HA|TA],[HB|TB],[HC|TC]|_] = PREV_STATE,
+    NEXT_STATE = [[HB|[HA|TA]],TB,[HC|TC]].    
+
+move_A2C(PREV_STATE, NEXT_STATE) :-
+    [[HA|TA],[HB|TB],[HC|TC]|_] = PREV_STATE,
+    NEXT_STATE = [TA,[HB|TB],[HA|[HC|TC]]].
+
+move_C2A(PREV_STATE, NEXT_STATE) :-
+    [A,B,[HC|TC]] = PREV_STATE,
+    NEXT_STATE = [[HC|A], B, TC].
+
+move_B2C(PREV_STATE, NEXT_STATE) :-
+    [A,[HB|TB],C] = PREV_STATE,
+    NEXT_STATE = [A, TB, [HB|C]].
+
+move_C2B(PREV_STATE, NEXT_STATE) :-
+    [A,B,[HC|TC]] = PREV_STATE,
+    NEXT_STATE = [A, [HC|B], TC].
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Predicados relativos ao objetivo final e estado inicial. 
+
+% O numero 6 representa nenhum disco.
+% reached_goal: True se existe um node_ref no database que corresponde ao estado-meta
+% reached_subgoal: True se o STATE passado corresponde a um sub-objetivo, isto e, se 
+%                  existe uma sequencia correta em C. 
+%                  Exemplo: [[1,2],[3],[4,5]] is subgoal -&gt; [4,5] em C esta correto.
+% return_goal: Devolve o numero de nodes explorados, custo otimo e lista de acoes
+%              otimas.
+% modify_initial_state: cria um node_ref com o estado inicial passado.
+
+
+reached_goal :-
+    node_ref(_, [[6],[6],[1,2,3,4,5,6]], _, _).
+
+reached_subgoal(STATE) :-
+    [_,_,C] = STATE,
+    length(C, LEN),
+    [HC|_] = C,
+    (
+        HC =:= 7-LEN
+    ).
+
+return_goal(EXPLORED_NODES, COST, ACTION_LIST) :- 
+    node_ref(GOAL_NODE, [[6],[6],[1,2,3,4,5,6]], COST, _),
+    num_nodes(EXPLORED_NODES),
+    actions(GOAL_NODE),
+    action_list(ACTION_LIST).
+
+modify_initial_state(INITIAL_STATE) :-
+    retractall(node_ref(0,_,0,_)),
+    assertz(node_ref(0, INITIAL_STATE, 0, 'INIT')).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Predicados relativos a busca
+
+% create_father: cria um predicado father atribuindo o node pai de determinado node.
+% update_frontier: atualiza o predicado frontier com o node expandido.
+% create_children: cria os nodes filhos possiveis seguindo as seguintes restricoes
+%                   1 - Respeita as regras do sistema
+%                   2 - Nao recria o node pai
+%                   3 - Nao desfaz um subgoal (jogada sempre indesejada)
+% heuristic: calcula valor de heuristica para determinado node
+% evaluate_nodes: avalia nodes da fronteira e estabelece o node de menor custo
+% search: realiza a busca A*
+% actions: estabelece acoes que devem ser seguidas para chegar na solucao otima, a partir do node final
+
+
+create_father(NODE) :-
+    num_nodes(NUM_NODES),
+    assertz(father(NODE, NUM_NODES)).
+
+update_frontier(NODE) :-
+    num_nodes(NUM_NODES),
+    frontier(FRONTIER_NODES),
+    delete(FRONTIER_NODES, NODE, AUX),
+    append(AUX, [NUM_NODES], NEW_FRONTIER),
+    retractall(frontier(_)),
+    assertz(frontier(NEW_FRONTIER)).
+
+create_children :-
+    best_node(NODE),
+    node_ref(NODE, STATE, FATHER_COST, FATHER_ACTION),
+    [[HA|_],[HB|_],[HC|_]|_] = STATE,
+    num_nodes(NUM_NODES),
+    (
+        HA &gt; HB -&gt; 
+            (   (FATHER_ACTION \== 'A2B') -&gt; (  N1 is NUM_NODES+1, F1 is FATHER_COST+1,
+                                                move_B2A(STATE, NEXT_STATE),
+                                                assertz(node_ref(N1, NEXT_STATE, F1, 'B2A')),
+                                                update_counter(NUM_NODES),
+                                                create_father(NODE),
+                                                update_frontier(NODE)
+                                            ); true
+            );
+            (   (HA \== HB),(FATHER_ACTION \== 'B2A') -&gt; (  N1 is NUM_NODES+1, F1 is FATHER_COST+1,
+                                                            move_A2B(STATE, NEXT_STATE),
+                                                            assertz(node_ref(N1, NEXT_STATE, F1, 'A2B')),
+                                                            update_counter(NUM_NODES),
+                                                            create_father(NODE),
+                                                            update_frontier(NODE)
+                                                    ); true
+        	)
+    ),
+    num_nodes(NUM_NODES_2),
+    (
+        HA &gt; HC -&gt; 
+            (   (FATHER_ACTION \== 'A2C'),not(reached_subgoal(STATE)) -&gt; (  N2 is NUM_NODES_2+1, F2 is FATHER_COST+1,
+                                                move_C2A(STATE, NEXT_STATE_2),
+                                                assertz(node_ref(N2, NEXT_STATE_2, F2, 'C2A')),
+                                                update_counter(NUM_NODES_2),
+                                                create_father(NODE),
+                                                update_frontier(NODE)
+                                            ); true
+            );
+            (   (HA \== HC),(FATHER_ACTION \== 'C2A') -&gt; (  N2 is NUM_NODES_2+1, F2 is FATHER_COST+1,
+                                                            move_A2C(STATE, NEXT_STATE_2),
+                                                            assertz(node_ref(N2, NEXT_STATE_2, F2, 'A2C')),
+                                                            update_counter(NUM_NODES_2),
+                                                            create_father(NODE),
+                                                            update_frontier(NODE)
+                                                    ); true
+        	)
+    ),
+    num_nodes(NUM_NODES_3),
+    (
+        HB &gt; HC -&gt; 
+            (   (FATHER_ACTION \== 'B2C'),not(reached_subgoal(STATE)) -&gt; (  N3 is NUM_NODES_3+1, F3 is FATHER_COST+1,
+                                                move_C2B(STATE, NEXT_STATE_3),
+                                                assertz(node_ref(N3, NEXT_STATE_3, F3, 'C2B')),
+                                                update_counter(NUM_NODES_3),
+                                                create_father(NODE),
+                                                update_frontier(NODE)
+                                            ); true
+            );
+            (   (HB \== HC),(FATHER_ACTION \== 'C2B') -&gt; (  N3 is NUM_NODES_3+1, F3 is FATHER_COST+1,
+                                                            move_B2C(STATE, NEXT_STATE_3),
+                                                            assertz(node_ref(N3, NEXT_STATE_3, F3, 'B2C')),
+                                                            update_counter(NUM_NODES_3),
+                                                            create_father(NODE),
+                                                            update_frontier(NODE)
+                                                    ); true
+        	)
+    ).
+
+heuristic(NODE, H) :-
+    node_ref(NODE, STATE, _, _),
+    [A, B, C] = STATE,
+
+    % acha o maior elemento em A ou B. Chama ele de N.
+    delete(A, 6, A_NEW),
+    delete(B, 6, B_NEW),
+    (   not(is_empty(A_NEW)) -&gt; max_list(A_NEW, A_MAX);A_MAX = 0	),
+    (   not(is_empty(B_NEW)) -&gt; max_list(B_NEW, B_MAX);B_MAX = 0	),
+    max_list([A_MAX, B_MAX], N),
+    
+    % conta quantos discos menores que N estao em C.
+    retractall(counter(_)),
+    assertz(counter(0)),
+    less_than(C, N),
+    counter(COUNTER),
+    hanoi(COUNTER, HANOI_C),
+
+    % quantidade de discos em A e B
+    length(A_NEW,A_LEN),
+    length(B_NEW,B_LEN),
+    
+    (
+        member(N,A) -&gt;
+            (   
+                hanoi(A_LEN, HANOI_A),
+                AUX is B_LEN + COUNTER,
+                hanoi(AUX, HANOI_BC),
+                H is HANOI_A + HANOI_C + HANOI_BC
+            );
+            (
+                hanoi(B_LEN, HANOI_B),
+                AUX is A_LEN + COUNTER,
+                hanoi(AUX, HANOI_AC),
+                H is HANOI_B + HANOI_C + HANOI_AC
+            )
+    ).
+
+
+evaluate_nodes([]).
+
+evaluate_nodes(FRONTIER) :-
+    [NODE|OTHER_NODES] = FRONTIER,
+    node_ref(NODE,_,COST_TO_NODE, _),
+    heuristic(NODE, H),
+    COST is COST_TO_NODE + H,
+    min_cost(MIN_COST),
+    (
+    	COST &lt; MIN_COST -&gt; (   
+                           	retractall(min_cost(_)),
+                            assertz(min_cost(COST)),
+                           	retractall(best_node(_)),
+                            assertz(best_node(NODE))
+                           );true
+    ),
+    evaluate_nodes(OTHER_NODES).
+
+search :-
+    frontier(FRONTIER),
+    retractall(min_cost(_)),
+    assertz(min_cost(inf)),
+    retractall(best_node(_)),
+    evaluate_nodes(FRONTIER),
+    (   
+    	(reached_goal) -&gt;
+    		true;
+    		(  
+                create_children,
+                search
+            )
+    ).
+
+actions(0).
+
+actions(FINAL_NODE) :-
+    node_ref(FINAL_NODE, _, _, ACTION),
+    action_list(AUX),
+    append([ACTION], AUX, ACTION_LIST),
+    retractall(action_list(_)),
+    assertz(action_list(ACTION_LIST)),
+    father(FATHER, FINAL_NODE),
+    actions(FATHER).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+main(INITIAL_STATE,EXPLORED_NODES,COST,ACTION_LIST) :-
+    modify_initial_state(INITIAL_STATE),
+    search,
+    return_goal(EXPLORED_NODES, COST, ACTION_LIST).
+</div>
+
+<div class="nb-cell markdown" name="md2">
+### Utilizando o código
+
+Para utilizar o código deve-se chamar o predicado "main", passando 4 variáveis:
+
+* **INITIAL_STATE (_input_)**: estado inicial do problema a ser resolvido, deve-se fornecer uma lista que contém outras listas, as quais representam as discos presentes em cada um dos postes, A, B e C, respectivamente. Do modo que o script foi construído, deve-se completar as listas com o número 6, indicando o fim da disposição dos discos. Um exemplo de _input_ seria: [[1,2,3,6],[4,5,6],[6]], indicando que os discos 1, 2 e 3 estão no poste A, os discos 4 e 5 no poste B e que não há discos no poste C.
+
+* **EXPLORED_NODES (_output_)**: quantidade de nós explorados.
+
+* **COST (_output_)**: custo da melhor solução encontrada.
+
+* **ACTION_LIST (_output_)**: ações tomadas para encontrar a melhor solução. As ações são descritas como "X2Y", onde o disco no topo do poste X deve ser movido para o poste Y. Então na ação "A2C", o disco no topo do poste A deve ser movido para o poste C.
+
+</div>
+
+<div class="nb-cell markdown" name="md6">
+### Caso 1 - 3 discos
+Situação análoga ao problema de Torre Hanoi clássico para apenas 3 discos.
+
+A -&gt; [1,2,3]
+
+B -&gt; []
+
+C -&gt; [4,5]
+</div>
+
+<div class="nb-cell query" name="q1">
+main([[1,2,3,6],[6],[4,5,6]],EXPLORED_NODES,COST,ACTION_LIST).
+</div>
+
+<div class="nb-cell markdown" name="md7">
+### Caso 2 - 4 discos
+Situação análoga ao problema de Torre Hanoi clássico para apenas 4 discos.
+
+A -&gt; [1,2,3,4]
+
+B -&gt; []
+
+C -&gt; [5]
+</div>
+
+<div class="nb-cell query" name="q2">
+main([[1,2,3,4,6],[6],[5,6]],EXPLORED_NODES,COST,ACTION_LIST).
+</div>
+
+<div class="nb-cell markdown" name="md8">
+### Caso 3 - Estado inicial aleatório com 5 discos
+
+A -&gt; [1,3,5]
+
+B -&gt; [2,4]
+
+C -&gt; []
+</div>
+
+<div class="nb-cell query" name="q3">
+main([[1,3,5,6],[2,4,6],[6]],EXPLORED_NODES,COST,ACTION_LIST).
+</div>
+
+<div class="nb-cell markdown" name="md9">
+### Caso 4 - 5 discos
+Caso tradicional da Torre de Hanoi com 5 discos. Devida a complexidade deste caso (custo ótimo é de 31), o servidor corta a query antes do seu fim com a mensagem de _Time limit exceeded_.
+
+A -&gt; [1,2,3,4,5]
+
+B -&gt; []
+
+C -&gt; []
+</div>
+
+<div class="nb-cell query" name="q4">
+main([[1,2,3,4,5,6],[6],[6]],EXPLORED_NODES,COST,ACTION_LIST).
+</div>
+
+</div>
