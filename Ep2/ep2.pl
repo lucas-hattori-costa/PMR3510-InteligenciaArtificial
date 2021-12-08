@@ -4,7 +4,6 @@ father(child_node_num, father_node_num).
 min_cost(inf).
 best_node(0).
 num_nodes(0).
-h(0).
 action_list([]).
 
 :- dynamic(on/2).
@@ -14,7 +13,6 @@ action_list([]).
 :- dynamic(min_cost/1).
 :- dynamic(best_node/1).
 :- dynamic(num_nodes/1).
-:- dynamic(h/1).
 :- dynamic(counter/1).
 :- dynamic(action_list/1).
 
@@ -90,8 +88,8 @@ move(X,Y):-
                 create_father(NODE),
                 update_frontier(NODE)
             );
-            (
-                true
+            (	
+            	retract_state(STATE)
             )
     ).
 
@@ -140,28 +138,11 @@ create_children :-
     move(b,table),
     move(c,table).
 
-heuristic(_,[]).
-heuristic(NODE_STATE,GOALS) :-
-    assert_state(NODE_STATE),
-    [HEAD|TAIL] = GOALS,
-    (
-        HEAD -> (true);(
-            h(H),
-            AUX is H+1,
-            retractall(h(_)),
-            assertz(h(AUX))
-        )
-    ),
-    heuristic(NODE_STATE,TAIL).
-
 evaluate_nodes([]).
-evaluate_nodes(FRONTIER,GOALS) :-
+evaluate_nodes(FRONTIER) :-
     [NODE|OTHER_NODES] = FRONTIER,
-    node_ref(NODE,NODE_STATE,COST_TO_NODE,_),
-    heuristic(NODE_STATE,GOALS),
-    h(H),
-    retractall(h(_)),
-    COST is COST_TO_NODE + H,
+    node_ref(NODE,_,COST_TO_NODE,_),
+    COST is COST_TO_NODE,
     min_cost(MIN_COST),
     (
     	COST < MIN_COST -> (   
@@ -178,7 +159,7 @@ search(GOALS):-
     retractall(min_cost(_)),
     assertz(min_cost(inf)),
     retractall(best_node(_)),
-    evaluate_nodes(FRONTIER,GOALS),
+    evaluate_nodes(FRONTIER),
     (   
     	(reached_goals(GOALS)) ->
     		true;
