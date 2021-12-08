@@ -1,0 +1,252 @@
+<div class="notebook">
+
+<div class="nb-cell markdown" name="md1">
+# Torre de Hanoi - A*
+
+### PMR3510 - Inteligência Artificial
+
+### Grupo: 
+- Bruno Scaglione (10335812)
+- Lucas Hattori Costa (10335847)
+- Lucas Hideki Okamura (9274315)
+</div>
+
+<div class="nb-cell markdown" name="md2">
+### Pseudocódigo
+
+```
+1. Recebe um estado inicial qualquer com 5 discos.
+2. Inicializa a fronteira de nós a serem explorados com o nó inicial.
+3. Começa a busca:
+  4. Para cada nó na fronteira:
+  	4.1 Se objetivo for atingido, termina a busca e vai para 9.
+	4.2 Computa o valor f(n) para cada nó, onde f(n) = g(n) + h(n)
+    	4.3 Atribui como o melhor nó aquele com o menor valor de f(n)
+  5. Atribui como ações possíveis as ações que:
+    - respeitam as regras do sistema;
+    - voltam para o estado anterior;
+    - não desmontam discos já montados corretamente.
+  6. Para cada ação possível, gera um nó-filho.
+  7. Atualiza a fronteira de nós a serem explorados adicionando os nós-filhos gerados e excluindo o nó expandido.
+  8. Retorna a 3
+9. Retorna custo do caminho ótimo, lista de ações e número de nós explorados.
+```
+</div>
+
+<div class="nb-cell program" data-background="true" name="p1">
+frontier([0]).
+node_ref(node_num, state, cost, previous_action).
+father(child_node_num, father_node_num).
+min_cost(inf).
+best_node(0).
+num_nodes(0).
+action_list([]).
+
+:- dynamic(on/2).
+:- dynamic(node_ref/4).
+:- dynamic(father/2).
+:- dynamic(frontier/1).
+:- dynamic(min_cost/1).
+:- dynamic(best_node/1).
+:- dynamic(num_nodes/1).
+:- dynamic(counter/1).
+:- dynamic(action_list/1).
+
+free(table).
+free(B) :- 
+    not(on(_,B)).
+
+on(_,_) :- false.
+
+return_goal(GOALS, EXPLORED_NODES, COST, ACTION_LIST) :- 
+    node_ref(GOAL_NODE, GOALS, COST, _),
+    num_nodes(EXPLORED_NODES),
+    actions(GOAL_NODE),
+    action_list(ACTION_LIST).
+
+create_father(NODE) :-
+    num_nodes(NUM_NODES),
+    assertz(father(NODE, NUM_NODES)).
+
+update_frontier(NODE) :-
+    num_nodes(NUM_NODES),
+    frontier(FRONTIER_NODES),
+    delete(FRONTIER_NODES, NODE, AUX),
+    append(AUX, [NUM_NODES], NEW_FRONTIER),
+    retractall(frontier(_)),
+    assertz(frontier(NEW_FRONTIER)).
+
+update_counter(NUM_NODES) :-
+    % Atualiza o predicado num_nodes
+    retractall(num_nodes(_)),
+    AUX is NUM_NODES+1,
+    assertz(num_nodes(AUX)).
+
+
+
+move_preconditions(X,Y):-
+    % preconditions
+    (X \== table),
+    X \== Y,
+    free(X),
+    free(Y),
+    on(X,Z),
+    Z \== Y.
+
+record_state(NEXT_STATE3) :-
+    on(a,X),
+    append([], [on(a,X)], NEXT_STATE),
+    on(b,Y),
+    append(NEXT_STATE, [on(b,Y)], NEXT_STATE2),
+    on(c,Z),
+    append(NEXT_STATE2, [on(c,Z)], NEXT_STATE3).
+
+move_effects(X,Y) :-
+    % remove effects
+    retractall(on(X,_)),
+    % add effects
+    assertz(on(X,Y)).
+
+move(X,Y):-
+    num_nodes(NUM_NODES),
+    best_node(NODE),
+    node_ref(NODE, STATE, FATHER_COST, _),
+    assert_state(STATE),
+    (
+        move_preconditions(X,Y) -&gt;
+            (
+                N1 is NUM_NODES+1, F1 is FATHER_COST+1,
+                move_effects(X,Y),
+                record_state(NEXT_STATE),
+                retract_state(NEXT_STATE),
+                assertz(node_ref(N1, NEXT_STATE, F1, [X,Y])),
+                update_counter(NUM_NODES),
+                create_father(NODE),
+                update_frontier(NODE)
+            );
+            (	
+            	retract_state(STATE)
+            )
+    ).
+
+assert_state([]).
+assert_state(STATE) :-
+    [H|T] = STATE,
+    assertz(H),
+    assert_state(T).
+
+retract_state([]).
+retract_state(STATE) :-
+    [H|T] = STATE,
+    retractall(H),
+    retract_state(T).
+
+check_goals([]).
+check_goals(GOALS) :-
+    [H|T] = GOALS,
+    H,
+    check_goals(T).
+
+reached_goals(GOALS) :-
+    best_node(NODE),
+    node_ref(NODE, STATE, _, _),    
+    assert_state(STATE),
+    (
+        check_goals(GOALS) -&gt;
+            (
+                retract_state(STATE),
+                true
+            );
+            (
+                retract_state(STATE),
+                false
+            )
+    ).
+
+create_children :-
+    move(a,b),
+    move(a,c),
+    move(b,a),
+    move(b,c),
+    move(c,a),
+    move(c,b),
+    move(a,table),
+    move(b,table),
+    move(c,table).
+
+evaluate_nodes([]).
+evaluate_nodes(FRONTIER) :-
+    [NODE|OTHER_NODES] = FRONTIER,
+    node_ref(NODE,_,COST_TO_NODE,_),
+    COST is COST_TO_NODE,
+    min_cost(MIN_COST),
+    (
+    	COST &lt; MIN_COST -&gt; (   
+                           	retractall(min_cost(_)),
+                            assertz(min_cost(COST)),
+                           	retractall(best_node(_)),
+                            assertz(best_node(NODE))
+                           );true
+    ),
+    evaluate_nodes(OTHER_NODES).
+
+search(GOALS):-
+    frontier(FRONTIER),
+    retractall(min_cost(_)),
+    assertz(min_cost(inf)),
+    retractall(best_node(_)),
+    evaluate_nodes(FRONTIER),
+    (   
+    	(reached_goals(GOALS)) -&gt;
+    		true;
+    		(  
+                create_children,
+                search(GOALS)
+            )
+    ).
+
+actions(0).
+actions(FINAL_NODE) :-
+    node_ref(FINAL_NODE, _, _, ACTION),
+    action_list(AUX),
+    append([ACTION], AUX, ACTION_LIST),
+    retractall(action_list(_)),
+    assertz(action_list(ACTION_LIST)),
+    father(FATHER, FINAL_NODE),
+    actions(FATHER).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+modify_initial_state(INITIAL_STATE) :-
+    retractall(node_ref(0,_,0,_)),
+    assertz(node_ref(0, INITIAL_STATE, 0, 'INIT')).
+
+main(INITIAL_STATE, GOALS, EXPLORED_NODES, COST, ACTION_LIST) :-
+    modify_initial_state(INITIAL_STATE),
+    search(GOALS),
+    return_goal(GOALS, EXPLORED_NODES, COST, ACTION_LIST).
+</div>
+
+<div class="nb-cell markdown" name="md3">
+### Utilizando o código
+
+Para utilizar o código deve-se chamar o predicado "main", passando 4 variáveis:
+
+* **INITIAL_STATE (_input_)**: estado inicial do problema a ser resolvido, deve-se fornecer uma lista de predicados _on_
+
+* **EXPLORED_NODES (_output_)**: quantidade de nós explorados.
+
+* **COST (_output_)**: custo da melhor solução encontrada.
+
+* **ACTION_LIST (_output_)**: ações tomadas para encontrar a melhor solução. As ações são descritas como [X,Y], que significa mover o bloco X para cima de Y.
+</div>
+
+<div class="nb-cell markdown" name="md4">
+### Custo 4 - Pior custo possível
+</div>
+
+<div class="nb-cell query" name="q1">
+main([on(a,c),on(b,table),on(c,b)],[on(a,table),on(b,a),on(c,b)],EXPLORED_NODES,COST,ACTION_LIST).
+</div>
+
+</div>
